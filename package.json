@@ -19,6 +19,7 @@
 		"@heroui/navbar": "^2.2.30",
 		"@heroui/progress": "^2.2.25",
 		"@heroui/react": "3.0.3",
+		"@heroui/select": "^2.4.33",
 		"@heroui/styles": "3.0.3",
 		"@heroui/switch": "^2.2.27",
 		"@heroui/toast": "^2.0.22",
