@@ -1,171 +1,152 @@
 "use client";
 
-import { useState } from "react";
-import { Button, Kbd, Link, TextField, InputGroup } from "@heroui/react";
+import React, { useEffect, useState } from "react";
+import {
+  Navbar as HeroUINavbar,
+  NavbarContent,
+  NavbarMenu,
+  NavbarMenuToggle,
+  NavbarBrand,
+  NavbarItem,
+  NavbarMenuItem,
+} from "@heroui/navbar";
+import { usePathname } from "next/navigation";
+import { link as linkStyles } from "@heroui/theme";
 import NextLink from "next/link";
 import clsx from "clsx";
-
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
-import {
-  TwitterIcon,
-  GithubIcon,
-  DiscordIcon,
-  HeartFilledIcon,
-  SearchIcon,
-  Logo,
-} from "@/components/icons";
+import { ChartNoAxesColumn, LogOut } from "lucide-react";
+import { Divider } from "@heroui/divider";
+import { Button } from "@heroui/button";
+import { logout } from "@/actions/auth";
 
 export const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
 
-  const searchInput = (
-    <TextField aria-label="Search" type="search">
-      <InputGroup>
-        <InputGroup.Prefix>
-          <SearchIcon className="text-base text-muted pointer-events-none flex-shrink-0" />
-        </InputGroup.Prefix>
-        <InputGroup.Input className="text-sm" placeholder="Search..." />
-        <InputGroup.Suffix>
-          <Kbd className="hidden lg:inline-flex">
-            <Kbd.Abbr keyValue="command" />
-            <Kbd.Content>K</Kbd.Content>
-          </Kbd>
-        </InputGroup.Suffix>
-      </InputGroup>
-    </TextField>
-  );
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
+
+  // SI LA RUTA ES /LOGIN, NO RENDERIZAMOS NADA
+  if (pathname === "/login") return null;
 
   return (
-    <nav className="sticky top-0 z-40 w-full border-b border-separator bg-background/70 backdrop-blur-lg">
-      <header className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-4 px-6">
-        <div className="flex items-center gap-4">
-          <NextLink className="flex items-center gap-1" href="/">
-            <Logo />
-            <p className="font-bold text-inherit">ACME</p>
+    <HeroUINavbar 
+      classNames={{
+        base: "z-[100]",
+        wrapper: "z-[100]",
+        menu: "z-[101]",
+        menuItem: "z-[101]",
+      }} 
+      isMenuOpen={isMenuOpen}
+      maxWidth="xl"
+      position="sticky"
+      onMenuOpenChange={setIsMenuOpen}
+    >
+      {/* Contenido Superior (Brand y Desktop Nav) */}
+      <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
+        <NavbarBrand as="li" className="gap-3 max-w-fit">
+          <NextLink className="flex justify-start items-center gap-1" href="/">
+            <ChartNoAxesColumn />
           </NextLink>
-          <ul className="hidden lg:flex gap-4 ml-2">
-            {siteConfig.navItems.map((item) => (
-              <li key={item.href}>
-                <NextLink
-                  className={clsx(
-                    "text-foreground hover:text-accent transition-colors",
-                    "data-[active=true]:text-accent data-[active=true]:font-medium",
-                  )}
-                  href={item.href}
-                >
-                  {item.label}
-                </NextLink>
-              </li>
-            ))}
-          </ul>
-        </div>
+        </NavbarBrand>
+        <ul className="hidden lg:flex gap-4 justify-start ml-5">
+          {siteConfig.navItems.map((item, index, array) => {
+            const isActive = pathname === item.href;
 
-        <div className="hidden sm:flex items-center gap-2">
-          <Link
-            aria-label="Twitter"
-            href={siteConfig.links.twitter}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <TwitterIcon className="text-muted" />
-          </Link>
-          <Link
-            aria-label="Discord"
-            href={siteConfig.links.discord}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <DiscordIcon className="text-muted" />
-          </Link>
-          <Link
-            aria-label="Github"
-            href={siteConfig.links.github}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <GithubIcon className="text-muted" />
-          </Link>
+            return (
+              <React.Fragment key={item.href}>
+                <NavbarItem isActive={isActive}>
+                  <NextLink
+                    data-text={item.label}
+                    className={clsx(
+                      linkStyles({ color: "foreground" }), 
+                      isActive ? "!text-blue-500 font-bold" : "",
+                      "flex flex-col items-center after:content-[attr(data-text)] after:font-bold after:h-0 after:invisible after:overflow-hidden"
+                    )}
+                    href={item.href}
+                  >
+                    {item.label}
+                  </NextLink>
+                </NavbarItem>
+                
+                {index < array.length - 1 && (
+                  <Divider orientation="vertical" className="h-5 self-center opacity-50 mx-2" />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </ul>
+      </NavbarContent>
+
+      {/* Acciones Derecha (Desktop) */}
+      <NavbarContent
+        className="hidden sm:flex basis-1/5 sm:basis-full"
+        justify="end"
+      >
+        <NavbarItem className="hidden sm:flex gap-2 items-center">
           <ThemeSwitch />
-          <div className="hidden lg:flex">{searchInput}</div>
-          <div className="hidden md:flex">
-            <Button
-              className="text-sm font-normal"
-              variant="tertiary"
-              onPress={() => window.open(siteConfig.links.sponsor, "_blank")}
+          <form action={logout}>
+            <Button 
+              isIconOnly 
+              color="danger"
+              size="sm" 
+              variant="light" 
+              type="submit"
+              aria-label="Cerrar sesión"
             >
-              <HeartFilledIcon className="text-danger" />
-              Sponsor
+              <LogOut size={20} />
             </Button>
-          </div>
-        </div>
+          </form>
+        </NavbarItem>
+        <NavbarItem className="hidden md:flex">
+        </NavbarItem>
+      </NavbarContent>
 
-        <div className="flex sm:hidden items-center gap-2">
-          <Link
-            aria-label="Github"
-            href={siteConfig.links.github}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <GithubIcon className="text-muted" />
-          </Link>
-          <ThemeSwitch />
-          <button
-            aria-expanded={isMenuOpen}
-            aria-label="Toggle menu"
-            className="p-2"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-          >
-            <svg
-              className="h-6 w-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              {isMenuOpen ? (
-                <path
-                  d="M6 18L18 6M6 6l12 12"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                />
-              ) : (
-                <path
-                  d="M4 6h16M4 12h16M4 18h16"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                />
-              )}
-            </svg>
-          </button>
-        </div>
-      </header>
+      {/* Controles para Móvil */}
+      <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
+        <ThemeSwitch />
+        <NavbarMenuToggle />
+      </NavbarContent>
 
-      {isMenuOpen && (
-        <div className="border-t border-separator sm:hidden">
-          <div className="p-4">{searchInput}</div>
-          <ul className="flex flex-col gap-2 px-4 pb-4">
-            {siteConfig.navMenuItems.map((item, index) => (
-              <li key={`${item.label}-${index}`}>
-                <Link
-                  className={clsx(
-                    "block py-2 text-lg no-underline",
-                    index === 2
-                      ? "text-accent"
-                      : index === siteConfig.navMenuItems.length - 1
-                        ? "text-danger"
-                        : "text-foreground",
-                  )}
-                  href="#"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
+      {/* Menú Desplegable Móvil */}
+      <NavbarMenu>
+        <div className="mx-4 mt-2 flex flex-col gap-2">
+          {siteConfig.navMenuItems.map((item, index) => (
+            <NavbarMenuItem key={`${item.label}-${index}`}>
+              <NextLink
+                onClick={() => setIsMenuOpen(false)}
+                className={clsx(
+                  linkStyles({ color: "foreground" }),
+                  "text-lg w-full",
+                  pathname === item.href ? "text-blue-500 font-bold" : ""
+                )}
+                href={item.href}
+              >
+                {item.label}
+              </NextLink>
+            </NavbarMenuItem>
+          ))}
+          
+          {/* Botón de Cerrar Sesión en Móvil */}
+          <Divider className="my-2" />
+          <NavbarMenuItem>
+            <form action={logout} className="w-full">
+              <Button 
+                fullWidth
+                className="justify-start px-0 text-danger" 
+                startContent={<LogOut size={20} />} 
+                variant="light" 
+                type="submit"
+              >
+                Cerrar Sesión
+              </Button>
+            </form>
+          </NavbarMenuItem>
         </div>
-      )}
-    </nav>
+      </NavbarMenu>
+    </HeroUINavbar>
   );
 };
