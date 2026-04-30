@@ -17,6 +17,7 @@ export interface BudgetMonth {
   month_name: string;
   cash_initial: number;
   mp_initial: number;
+  created_at: string;
 }
 
 export interface Expense {
@@ -27,4 +28,17 @@ export interface Expense {
   amount: number;
   payment_method: "efectivo" | "mercadopago";
   date: string;
+}
+
+export interface CreateMonthInput {
+  userId: string;
+  monthName: string;
+  cashInitial: number;
+  mpInitial: number;
+}
+
+export interface ActionResult<T = void> {
+  success: boolean;
+  data?: T;
+  error?: string;
 }
