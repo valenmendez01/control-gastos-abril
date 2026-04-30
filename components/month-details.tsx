@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useEffect } from "react";
 import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
 import { Select, SelectItem } from "@heroui/select";
@@ -9,6 +9,9 @@ import { Modal, ModalContent, ModalHeader, ModalBody, useDisclosure } from "@her
 import { Progress } from "@heroui/progress";
 import { Input } from "@heroui/input";
 import { Chip } from "@heroui/chip";
+import { Pagination } from "@heroui/pagination";
+import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
+import { Switch } from "@heroui/switch";
 import {
   Plus,
   Wallet,
@@ -28,6 +31,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createExpense, deleteExpense, type ExpenseWithCategory } from "@/actions/expense";
+import { toggleMonthStatus } from "@/actions/month";
 import type { Category } from "@/types/index";
 
 // ─── Icon map ─────────────────────────────────────────────────────────────────
@@ -76,6 +80,7 @@ interface CategoryTotal {
 interface MonthDetailsProps {
   monthId: string;
   monthName: string;
+  isActive: boolean;
   cashInitial: number;
   mpInitial: number;
   userId: string;
@@ -101,6 +106,7 @@ function formatDate(dateStr: string) {
 export function MonthDetailsClient({
   monthId,
   monthName,
+  isActive: initialIsActive,
   cashInitial,
   mpInitial,
   userId,
@@ -124,6 +130,23 @@ export function MonthDetailsClient({
     paymentMethod: "efectivo" as "efectivo" | "mercadopago",
   });
 
+  const [isActive, setIsActive] = useState(initialIsActive);
+  const [isSwitchPending, startSwitchTransition] = useTransition();
+
+  const ITEMS_PER_PAGE = 5;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const handleToggleStatus = (selected: boolean) => {
+    setIsActive(selected); // Optimistic update
+    startSwitchTransition(async () => {
+      const res = await toggleMonthStatus(monthId, userId, selected);
+      if (!res.success) {
+        setIsActive(!selected); // Revertir si falla
+        console.error(res.error);
+      }
+    });
+  };
+
   // ── Derived ─────────────────────────────────────────────────────────────────
 
   const totalInitial = cashInitial + mpInitial;
@@ -140,6 +163,17 @@ export function MonthDetailsClient({
     : 0;
 
   const isOverBudget = totals.total_available < 0;
+
+  const totalPages = Math.max(1, Math.ceil(expenses.length / ITEMS_PER_PAGE));
+  const paginatedExpenses = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return expenses.slice(start, start + ITEMS_PER_PAGE);
+  }, [expenses, currentPage]);
+
+  // Reset to page 1 when expenses change (e.g. after add/delete)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [expenses.length]);
 
   // ── Recalculate totals from expenses (client-side optimistic) ────────────────
 
@@ -250,7 +284,7 @@ export function MonthDetailsClient({
 
   // ── Expense Form (shared desktop/mobile) ─────────────────────────────────────
 
-  const ExpenseForm = ({ onClose }: { onClose?: () => void }) => (
+  const renderExpenseForm = (onClose?: () => void) => (
     <div className="flex flex-col gap-4">
       <Input
         type="number"
@@ -272,18 +306,23 @@ export function MonthDetailsClient({
         onChange={(e) => setForm({ ...form, description: e.target.value })}
       />
       <Select
+        id="category-select"
+        aria-label="Categoría"
         label="Categoría"
         placeholder="Seleccionar..."
         variant="bordered"
-        selectedKeys={form.categoryId ? [form.categoryId] : []}
+        // Usa un Set (formato requerido por la librería) o un array vacío
+        selectedKeys={form.categoryId ? new Set([form.categoryId]) : new Set([])}
         onSelectionChange={(keys) => {
-          const val = Array.from(keys)[0] as string;
+          // keys es un Set, tomamos el primer valor (o string vacío si lo deseleccionan)
+          const val = Array.from(keys)[0]?.toString() || "";
           setForm({ ...form, categoryId: val });
         }}
       >
         {categories.map((cat) => (
           <SelectItem
-            key={cat.id}
+            key={cat.id.toString()} // Asegura que el key sea un string
+            textValue={cat.name} // textValue es buena práctica para accesibilidad y búsqueda
             startContent={
               <div style={{ color: cat.color }}>
                 {cat.icon && ICON_MAP[cat.icon] ? ICON_MAP[cat.icon] : <MoreHorizontal size={16} />}
@@ -344,15 +383,28 @@ export function MonthDetailsClient({
     <div className="max-w-7xl mx-auto w-full flex flex-col gap-6">
       {/* Header */}
       <div className="flex justify-between items-end">
-        <div className="flex items-start gap-3">
-          <Link href="/dashboard">
+        <div className="flex items-start gap-3 flex-1">
+          <Link href="/">
             <Button isIconOnly variant="light" size="sm" className="mt-1">
               <ArrowLeft size={18} />
             </Button>
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold">{monthName}</h1>
-            <p className="text-default-500 text-sm">Control de presupuesto y gastos del mes.</p>
+          <div className="flex flex-1 items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">{monthName}</h1>
+              <p className="text-default-500 text-sm">Control de presupuesto y gastos del mes.</p>
+            </div>
+            <Switch 
+              isSelected={isActive} 
+              onValueChange={handleToggleStatus}
+              isDisabled={isSwitchPending}
+              color="success"
+              size="sm"
+            >
+              <span className="text-sm font-medium ml-1">
+                {isActive ? "Activo" : "Inactivo"}
+              </span>
+            </Switch>
           </div>
         </div>
         <Button
@@ -376,7 +428,7 @@ export function MonthDetailsClient({
             <Card className={`${isOverBudget ? "bg-danger" : "bg-black"} text-white`}>
               <CardBody className="py-5">
                 <span className="text-xs font-bold text-white/60 uppercase tracking-wider">
-                  {isOverBudget ? "⚠ Excedido" : "Disponible"}
+                  {isOverBudget ? "⚠ Excedido" : "Total restante"}
                 </span>
                 <h2 className="text-3xl font-bold mt-1">
                   ${fmt(Math.abs(totals.total_available))}
@@ -399,7 +451,7 @@ export function MonthDetailsClient({
               <CardBody className="py-5">
                 <div className="flex items-center gap-2 text-default-500">
                   <Wallet size={16} />
-                  <span className="text-xs font-bold uppercase tracking-wider">Efectivo</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">Efectivo disponible</span>
                 </div>
                 <h2 className={`text-2xl font-bold mt-1 ${totals.cash_available < 0 ? "text-danger" : ""}`}>
                   ${fmt(Math.abs(totals.cash_available))}
@@ -413,18 +465,18 @@ export function MonthDetailsClient({
             </Card>
 
             {/* MercadoPago */}
-            <Card className="bg-blue-600 text-white">
+            <Card>
               <CardBody className="py-5">
-                <div className="flex items-center gap-2 text-white/80">
+                <div className="flex items-center gap-2 text-default-500">
                   <Smartphone size={16} />
-                  <span className="text-xs font-bold uppercase tracking-wider">MercadoPago</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">MP disponible</span>
                 </div>
                 <h2 className="text-2xl font-bold mt-1">
                   ${fmt(Math.abs(totals.mp_available))}
                   {totals.mp_available < 0 && <span className="text-sm opacity-80"> excedido</span>}
                 </h2>
                 <Progress size="sm" value={mpPercent} color={mpPercent >= 100 ? "danger" : "default"} className="mt-2 opacity-60" />
-                <span className="text-xs text-white/50 mt-1">
+                <span className="text-xs text-default-400 mt-1">
                   ${fmt(totals.mp_spent)} / ${fmt(mpInitial)}
                 </span>
               </CardBody>
@@ -450,7 +502,9 @@ export function MonthDetailsClient({
                             </span>
                             {cat.category_name}
                           </span>
-                          <span className="font-semibold">${fmt(cat.total)}</span>
+                          <span className="font-semibold text-right">
+                            ${fmt(cat.total)} <span className="text-default-400 font-normal ml-1">- {Math.round(pct)}%</span>
+                          </span>
                         </div>
                         <Progress
                           value={pct}
@@ -476,55 +530,87 @@ export function MonthDetailsClient({
                 </h3>
               </div>
 
-              {expenses.length === 0 ? (
-                <div className="flex flex-col items-center py-12 text-default-400 gap-2">
-                  <TrendingDown size={40} strokeWidth={1.2} />
-                  <p className="font-medium">Sin gastos registrados</p>
-                  <p className="text-sm">Agregá tu primer gasto del mes.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {expenses.map((expense, i) => (
-                    <div key={expense.id}>
-                      <div className="flex justify-between items-center py-2 px-1 rounded-lg hover:bg-default-50 group">
-                        <div className="flex gap-3 items-center flex-1 min-w-0">
+              <Table
+                aria-label="Lista de gastos"
+                removeWrapper
+                bottomContent={
+                  <div className="flex w-full justify-center">
+                    <Pagination
+                      isCompact
+                      showControls
+                      showShadow
+                      color="default"
+                      page={currentPage}
+                      total={totalPages}
+                      onChange={setCurrentPage}
+                    />
+                  </div>
+                }
+                classNames={{
+                  table: "min-h-[360px]",
+                  td: "align-top",
+                }}
+              >
+                <TableHeader>
+                  <TableColumn>GASTO</TableColumn>
+                  <TableColumn>FECHA</TableColumn>
+                  <TableColumn>MÉTODO</TableColumn>
+                  <TableColumn className="text-right">MONTO</TableColumn>
+                  <TableColumn className="w-10"> </TableColumn>
+                </TableHeader>
+                <TableBody
+                  items={paginatedExpenses}
+                  emptyContent={
+                    <div className="flex flex-col items-center py-8 text-default-400 gap-2">
+                      <TrendingDown size={40} strokeWidth={1.2} />
+                      <p className="font-medium">Sin gastos registrados</p>
+                      <p className="text-sm">Agregá tu primer gasto del mes.</p>
+                    </div>
+                  }
+                >
+                  {(expense) => (
+                    <TableRow key={expense.id} className="group">
+                      <TableCell>
+                        <div className="flex gap-3 items-center min-w-0">
                           <CategoryIcon icon={expense.category_icon} color={expense.category_color} />
                           <div className="min-w-0">
                             <p className="font-semibold text-sm truncate">{expense.description}</p>
-                            <p className="text-xs text-default-500">
-                              {formatDate(expense.date)} · {expense.category_name}
-                            </p>
+                            <p className="text-xs text-default-500">{expense.category_name}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 ml-2 shrink-0">
-                          <div className="text-right">
-                            <p className="font-bold text-sm">-${fmt(expense.amount)}</p>
-                            <Chip
-                              size="sm"
-                              variant="flat"
-                              color={expense.payment_method === "efectivo" ? "default" : "primary"}
-                              className="text-[10px]"
-                            >
-                              {expense.payment_method === "efectivo" ? "Efectivo" : "MP"}
-                            </Chip>
-                          </div>
-                          <Button
-                            isIconOnly
-                            variant="light"
-                            size="sm"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            isLoading={isPending}
-                            onPress={() => handleDelete(expense.id)}
-                          >
-                            <Trash2 size={14} className="text-danger" />
-                          </Button>
-                        </div>
-                      </div>
-                      {i < expenses.length - 1 && <Divider className="my-0.5" />}
-                    </div>
-                  ))}
-                </div>
-              )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-default-500 whitespace-nowrap">
+                          {formatDate(expense.date)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          color={expense.payment_method === "efectivo" ? "default" : "primary"}
+                          className="text-[10px]"
+                        >
+                          {expense.payment_method === "efectivo" ? "Efectivo" : "MP"}
+                        </Chip>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <p className="font-bold text-sm">-${fmt(expense.amount)}</p>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          isIconOnly
+                          variant="light"
+                          size="sm"
+                          onPress={() => handleDelete(expense.id)}
+                        >
+                          <Trash2 size={14} className="text-danger" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardBody>
           </Card>
         </div>
@@ -539,7 +625,7 @@ export function MonthDetailsClient({
                 </div>
                 <h3 className="text-xl font-semibold">Nuevo Gasto</h3>
               </div>
-              <ExpenseForm />
+              {renderExpenseForm()}
             </CardBody>
           </Card>
         </div>
@@ -552,7 +638,7 @@ export function MonthDetailsClient({
             <>
               <ModalHeader>Registrar Gasto</ModalHeader>
               <ModalBody className="pb-6">
-                <ExpenseForm onClose={onClose} />
+                {renderExpenseForm(onClose)}
               </ModalBody>
             </>
           )}

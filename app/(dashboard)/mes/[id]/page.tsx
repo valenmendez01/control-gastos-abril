@@ -7,8 +7,10 @@ import { getMonthDetails, getCategoriesByUser } from "@/actions/expense";
 export default async function MonthPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
+
   // 1. Verificar sesión
   const cookieStore = await cookies();
   const userId = cookieStore.get("session_user_id")?.value;
@@ -17,7 +19,7 @@ export default async function MonthPage({
   // 2. Obtener datos del mes (nombre + presupuestos iniciales)
   const monthResult = await turso.execute({
     sql: `SELECT * FROM budget_months WHERE id = ? AND user_id = ?`,
-    args: [params.id, userId],
+    args: [id, userId],
   });
 
   if (monthResult.rows.length === 0) redirect("/dashboard");
@@ -26,7 +28,7 @@ export default async function MonthPage({
 
   // 3. Obtener detalles (gastos, totales, categorías)
   const [detailsResult, categoriesResult] = await Promise.all([
-    getMonthDetails(params.id, userId),
+    getMonthDetails(id, userId),
     getCategoriesByUser(userId),
   ]);
 
@@ -38,8 +40,9 @@ export default async function MonthPage({
   return (
     <div className="p-4 md:p-6 w-full">
       <MonthDetailsClient
-        monthId={params.id}
+        monthId={id}
         monthName={month.month_name as string}
+        isActive={Boolean(month.is_active)}
         cashInitial={month.cash_initial as number}
         mpInitial={month.mp_initial as number}
         userId={userId}

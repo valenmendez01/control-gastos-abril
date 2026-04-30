@@ -11,7 +11,6 @@ import { Input } from "@heroui/input";
 import {
   PlusIcon,
   EyeIcon,
-  PencilIcon,
   TrashIcon,
   LogInIcon,
   BanknoteIcon,
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import { createMonth, deleteMonth } from "@/actions/month";
 import type { BudgetMonth } from "@/types/index";
+import Link from "next/link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,9 +49,6 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
     cashInitial: "",
     mpInitial: "",
   });
-
-  // Derive "active" month: most recently created (first in list)
-  const activeMonthId = months[0]?.id ?? null;
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -126,8 +123,19 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {months.map((month) => {
-            const isActive = month.id === activeMonthId;
-            const total = month.cash_initial + month.mp_initial;
+            // 1. Usamos el estado real de la BD en lugar de la posición en el array
+            const isActive = month.is_active; 
+            
+            // 2. Cálculos para el progreso y dinero restante/sobrante
+            const totalPresupuesto = month.cash_initial + month.mp_initial;
+            const totalGastado = month.total_spent || 0;
+            const dineroRestante = totalPresupuesto - totalGastado;
+            
+            // Evitamos división por cero y limitamos a 100%
+            const progressValue = totalPresupuesto > 0 
+              ? Math.min((totalGastado / totalPresupuesto) * 100, 100) 
+              : 0;
+            const isOverBudget = dineroRestante < 0;
 
             return (
               <Card key={month.id} className="shadow-sm border border-gray-100 p-2">
@@ -153,9 +161,6 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                       <Chip color="success" variant="flat" size="sm">Activo</Chip>
                     ) : (
                       <>
-                        <Button isIconOnly variant="light" size="sm">
-                          <PencilIcon size={16} className="text-gray-400" />
-                        </Button>
                         <Button
                           isIconOnly
                           variant="light"
@@ -171,9 +176,6 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
 
                   {/* Mobile actions */}
                   <div className="flex md:hidden gap-1">
-                    <Button isIconOnly variant="light" size="sm">
-                      <PencilIcon size={16} className="text-gray-400" />
-                    </Button>
                     <Button
                       isIconOnly
                       variant="light"
@@ -187,35 +189,36 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                 </CardHeader>
 
                 <CardBody className="py-4 gap-3">
-                  {/* Budget breakdown */}
-                  <div className="flex gap-4">
-                    <div className="flex items-center gap-1.5">
-                      <BanknoteIcon size={14} className="text-gray-400" />
-                      <span className="text-sm text-gray-500">Efectivo</span>
-                      <span className="text-sm font-semibold">
-                        ${month.cash_initial.toLocaleString("es-AR")}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <WalletIcon size={14} className="text-blue-400" />
-                      <span className="text-sm text-gray-500">MP</span>
-                      <span className="text-sm font-semibold">
-                        ${month.mp_initial.toLocaleString("es-AR")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Total */}
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold">
-                      ${total.toLocaleString("es-AR")}
+                  {/* Lógica dinámica: Restante (Activo) vs Sobrante (Inactivo) */}
+                  <div className="flex flex-col gap-1 mt-2">
+                    <span className="text-sm text-gray-500 font-medium uppercase tracking-wider text-[11px]">
+                      {isActive ? "Dinero Restante" : "Dinero Sobrante"}
                     </span>
-                    <span className="text-xs text-gray-500">Presupuesto total</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`text-2xl font-bold ${isOverBudget ? "text-danger" : "text-gray-900"}`}>
+                        ${Math.abs(dineroRestante).toLocaleString("es-AR")}
+                      </span>
+                      {isOverBudget && <span className="text-xs text-danger font-semibold">excedido</span>}
+                    </div>
                   </div>
 
-                  {isActive && (
-                    <Progress size="sm" value={0} color="default" className="mt-1" />
-                  )}
+                  {/* Progress Bar */}
+                    <div className="mt-1 flex flex-col gap-1">
+                      <Progress 
+                        size="sm" 
+                        value={progressValue} 
+                        color={isOverBudget ? "danger" : "default"} 
+                        className="mt-1" 
+                      />
+                      <div className="flex justify-between w-full">
+                        <span className="text-[10px] text-gray-400 font-medium">
+                          Gastado: ${totalGastado.toLocaleString("es-AR")}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-medium">
+                          Total: ${totalPresupuesto.toLocaleString("es-AR")}
+                        </span>
+                      </div>
+                    </div>
 
                   <Divider className="my-1 md:hidden" />
                 </CardBody>
@@ -223,36 +226,27 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                 <CardFooter className="flex justify-between md:justify-start items-center gap-2 pt-0">
                   {isActive ? (
                     <>
-                      <Button
-                        className="bg-gray-200 text-gray-700 font-medium flex-1 md:flex-none"
-                        startContent={<LogInIcon size={16} />}
-                        variant="flat"
-                      >
-                        Entrar
-                      </Button>
-                      <div className="hidden md:flex gap-1">
-                        <Button isIconOnly variant="light" size="sm">
-                          <PencilIcon size={16} />
-                        </Button>
+                      {/* Botón Entrar envuelto en Link */}
+                      <Link href={`/mes/${month.id}`} className="flex-1 md:flex-none flex">
                         <Button
-                          isIconOnly
-                          variant="light"
-                          size="sm"
-                          isLoading={isPending}
-                          onPress={() => handleDelete(month.id)}
+                          className="bg-gray-200 text-gray-700 font-medium w-full"
+                          startContent={<LogInIcon size={16} />}
+                          variant="flat"
                         >
-                          <TrashIcon size={16} />
+                          Entrar
                         </Button>
-                      </div>
+                      </Link>
                     </>
                   ) : (
-                    <Button
-                      variant="bordered"
-                      className="flex-1 md:flex-none"
-                      startContent={<EyeIcon size={16} />}
-                    >
-                      Ver Detalles
-                    </Button>
+                    <Link href={`/mes/${month.id}`} className="flex-1 md:flex-none flex">
+                      <Button
+                        variant="bordered"
+                        className="w-full"
+                        startContent={<EyeIcon size={16} />}
+                      >
+                        Ver Detalles
+                      </Button>
+                    </Link>
                   )}
                 </CardFooter>
               </Card>

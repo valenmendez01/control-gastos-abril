@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS budget_months (
     cash_initial REAL DEFAULT 0,
     mp_initial REAL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_active INTEGER DEFAULT 1,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

@@ -11,10 +11,14 @@ export async function getMonthsByUser(
   userId: string
 ): Promise<ActionResult<BudgetMonth[]>> {
   try {
+    // Agregamos un LEFT JOIN para sumar los gastos de cada mes
     const result = await db.execute({
-      sql: `SELECT * FROM budget_months
-            WHERE user_id = ?
-            ORDER BY created_at DESC`,
+      sql: `SELECT m.*, COALESCE(SUM(e.amount), 0) as total_spent 
+            FROM budget_months m
+            LEFT JOIN expenses e ON m.id = e.month_id
+            WHERE m.user_id = ?
+            GROUP BY m.id
+            ORDER BY m.created_at DESC`,
       args: [userId],
     });
 
@@ -24,7 +28,9 @@ export async function getMonthsByUser(
       month_name: row.month_name as string,
       cash_initial: row.cash_initial as number,
       mp_initial: row.mp_initial as number,
+      is_active: Boolean(row.is_active),
       created_at: row.created_at as string,
+      total_spent: row.total_spent as number,
     }));
 
     return { success: true, data: months };
@@ -50,10 +56,17 @@ export async function createMonth(
   try {
     const id = nanoid();
 
+    // 1. Desactivar cualquier mes que esté activo para este usuario
+    await db.execute({
+      sql: `UPDATE budget_months SET is_active = 0 WHERE user_id = ? AND is_active = 1`,
+      args: [input.userId],
+    });
+
+    // 2. Insertar el nuevo mes (que por defecto en tu SQL tiene is_active = 1)
     await db.execute({
       sql: `INSERT INTO budget_months (id, user_id, month_name, cash_initial, mp_initial)
             VALUES (?, ?, ?, ?, ?)`,
-      args: [id, userId, monthName.trim(), cashInitial, mpInitial],
+      args: [id, input.userId, input.monthName.trim(), input.cashInitial, input.mpInitial],
     });
 
     const result = await db.execute({
@@ -68,6 +81,7 @@ export async function createMonth(
       month_name: row.month_name as string,
       cash_initial: row.cash_initial as number,
       mp_initial: row.mp_initial as number,
+      is_active: true,
       created_at: row.created_at as string,
     };
 
@@ -160,6 +174,7 @@ export async function updateMonth(
       month_name: row.month_name as string,
       cash_initial: row.cash_initial as number,
       mp_initial: row.mp_initial as number,
+      is_active: true,
       created_at: row.created_at as string,
     };
 
@@ -168,5 +183,30 @@ export async function updateMonth(
   } catch (err) {
     console.error("[updateMonth]", err);
     return { success: false, error: "No se pudo actualizar el periodo." };
+  }
+}
+
+export async function toggleMonthStatus(
+  monthId: string,
+  userId: string,
+  isActive: boolean
+): Promise<ActionResult> {
+  try {
+    const check = await db.execute({
+      sql: `SELECT id FROM budget_months WHERE id = ? AND user_id = ?`,
+      args: [monthId, userId],
+    });
+
+    if (check.rows.length === 0) return { success: false, error: "No encontrado" };
+
+    await db.execute({
+      sql: `UPDATE budget_months SET is_active = ? WHERE id = ?`,
+      args: [isActive ? 1 : 0, monthId],
+    });
+
+    revalidatePath(`/mes/${monthId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: "Error al actualizar estado" };
   }
 }

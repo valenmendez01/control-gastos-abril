@@ -17,7 +17,9 @@ export interface BudgetMonth {
   month_name: string;
   cash_initial: number;
   mp_initial: number;
+  is_active: boolean;
   created_at: string;
+  total_spent?: number;
 }
 
 export interface Expense {
