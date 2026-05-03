@@ -6,14 +6,12 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Tabla de Categorías (Configurables por el usuario)
+-- 2. Tabla de Categorías (Globales para todos los usuarios)
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
     name TEXT NOT NULL,
-    icon TEXT, -- Para guardar el nombre de un icono de Lucide o similar
-    color TEXT DEFAULT '#64748b',
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    icon TEXT, 
+    color TEXT DEFAULT '#64748b'
 );
 
 -- 3. Tabla de Meses de Gestión
@@ -41,6 +39,20 @@ CREATE TABLE IF NOT EXISTS expenses (
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
--- Índices para mejorar la velocidad de las consultas paginadas y filtros
-CREATE INDEX IF NOT EXISTS idx_expenses_month ON expenses(month_id);
-CREATE INDEX IF NOT EXISTS idx_budget_months_user ON budget_months(user_id);
+-- Índices Críticos para búsquedas por usuario y relación
+CREATE INDEX IF NOT EXISTS idx_budget_months_user_id ON budget_months(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
+CREATE INDEX IF NOT EXISTS idx_expenses_month_id ON expenses(month_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_category_id ON expenses(category_id);
+CREATE INDEX IF NOT EXISTS idx_budget_months_user_created ON budget_months(user_id, created_at DESC);
+
+-- Seed de Categorías por defecto (si no existen)
+INSERT OR IGNORE INTO categories (id, name, icon, color) VALUES 
+('cat_1', 'Supermercado', 'ShoppingCart', '#10b981'),
+('cat_2', 'Comida / Resto', 'Utensils', '#f59e0b'),
+('cat_3', 'Transporte', 'Car', '#3b82f6'),
+('cat_4', 'Salud', 'Heart', '#ef4444'),
+('cat_5', 'Entretenimiento', 'Tv', '#8b5cf6'),
+('cat_6', 'Servicios', 'Zap', '#6b7280'),
+('cat_7', 'Ropa', 'Shirt', '#ec4899'),
+('cat_8', 'Otros', 'MoreHorizontal', '#64748b');

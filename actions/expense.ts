@@ -7,53 +7,25 @@ import type { Expense, Category, ActionResult } from "@/types/index";
 
 // ─── Categorías ───────────────────────────────────────────────────────────────
 
-export async function getCategoriesByUser(
-  userId: string
-): Promise<ActionResult<Category[]>> {
+export async function getCategories(): Promise<ActionResult<Category[]>> {
   try {
     const result = await db.execute({
-      sql: `SELECT * FROM categories WHERE user_id = ? ORDER BY name ASC`,
-      args: [userId],
+      sql: `SELECT * FROM categories ORDER BY name ASC`,
+      args: [],
     });
 
     const categories = result.rows.map((row) => ({
       id: row.id as string,
-      user_id: row.user_id as string,
+      user_id: "",          // compatibilidad si el tipo lo requiere, sino sacarlo
       name: row.name as string,
       icon: row.icon as string | null,
       color: row.color as string,
     }));
 
-    // Si el usuario no tiene categorías, creamos unas por defecto
-    if (categories.length === 0) {
-      await seedDefaultCategories(userId);
-      return getCategoriesByUser(userId);
-    }
-
     return { success: true, data: categories };
   } catch (err) {
-    console.error("[getCategoriesByUser]", err);
+    console.error("[getCategories]", err);
     return { success: false, error: "No se pudieron obtener las categorías." };
-  }
-}
-
-async function seedDefaultCategories(userId: string) {
-  const defaults = [
-    { name: "Supermercado", icon: "ShoppingCart", color: "#10b981" },
-    { name: "Comida / Resto", icon: "Utensils", color: "#f59e0b" },
-    { name: "Transporte", icon: "Car", color: "#3b82f6" },
-    { name: "Salud", icon: "Heart", color: "#ef4444" },
-    { name: "Entretenimiento", icon: "Tv", color: "#8b5cf6" },
-    { name: "Servicios", icon: "Zap", color: "#6b7280" },
-    { name: "Ropa", icon: "Shirt", color: "#ec4899" },
-    { name: "Otros", icon: "MoreHorizontal", color: "#64748b" },
-  ];
-
-  for (const cat of defaults) {
-    await db.execute({
-      sql: `INSERT INTO categories (id, user_id, name, icon, color) VALUES (?, ?, ?, ?, ?)`,
-      args: [nanoid(), userId, cat.name, cat.icon, cat.color],
-    });
   }
 }
 
@@ -66,6 +38,13 @@ export interface ExpenseWithCategory extends Expense {
 }
 
 export interface MonthDetails {
+  // ✅ Nuevo: datos del mes incluidos en el resultado
+  month: {
+    month_name: string;
+    is_active: boolean;
+    cash_initial: number;
+    mp_initial: number;
+  };
   expenses: ExpenseWithCategory[];
   totals: {
     cash_spent: number;
@@ -99,9 +78,9 @@ export async function getMonthDetails(
       return { success: false, error: "Periodo no encontrado." };
     }
 
-    const month = monthCheck.rows[0];
-    const cashInitial = month.cash_initial as number;
-    const mpInitial = month.mp_initial as number;
+    const monthRow = monthCheck.rows[0];
+    const cashInitial = monthRow.cash_initial as number;
+    const mpInitial = monthRow.mp_initial as number;
 
     // Gastos con info de categoría
     const expensesResult = await db.execute({
@@ -142,7 +121,13 @@ export async function getMonthDetails(
     // Agrupado por categoría
     const categoryMap = new Map<
       string,
-      { category_id: string; category_name: string; category_color: string; category_icon: string | null; total: number }
+      {
+        category_id: string;
+        category_name: string;
+        category_color: string;
+        category_icon: string | null;
+        total: number;
+      }
     >();
 
     for (const e of expenses) {
@@ -167,6 +152,13 @@ export async function getMonthDetails(
     return {
       success: true,
       data: {
+        // ✅ Se incluye month — ya no hace falta el query extra en page.tsx
+        month: {
+          month_name: monthRow.month_name as string,
+          is_active: Boolean(monthRow.is_active),
+          cash_initial: cashInitial,
+          mp_initial: mpInitial,
+        },
         expenses,
         totals: {
           cash_spent: cashSpent,
@@ -207,7 +199,6 @@ export async function createExpense(
   }
 
   try {
-    // Verificar que el mes pertenece al usuario
     const check = await db.execute({
       sql: `SELECT id FROM budget_months WHERE id = ? AND user_id = ?`,
       args: [monthId, userId],
@@ -253,7 +244,6 @@ export async function deleteExpense(
   userId: string
 ): Promise<ActionResult> {
   try {
-    // Verificar ownership a través del mes
     const check = await db.execute({
       sql: `SELECT e.id FROM expenses e
             JOIN budget_months m ON e.month_id = m.id
@@ -265,7 +255,6 @@ export async function deleteExpense(
       return { success: false, error: "Gasto no encontrado." };
     }
 
-    // Obtener month_id antes de borrar para revalidar
     const expenseRow = await db.execute({
       sql: `SELECT month_id FROM expenses WHERE id = ?`,
       args: [expenseId],

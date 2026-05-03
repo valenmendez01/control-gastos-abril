@@ -1,8 +1,37 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { turso } from "@/lib/turso";
+import { Suspense } from "react";
 import { MonthDetailsClient } from "@/components/month-details";
-import { getMonthDetails, getCategoriesByUser } from "@/actions/expense";
+import { getMonthDetails, getCategories } from "@/actions/expense";
+import { MonthDetailsSkeleton } from "@/components/skeletons";
+
+// Componente async que carga los datos pesados
+async function MonthContent({ id, userId }: { id: string; userId: string }) {
+  const [detailsResult, categoriesResult] = await Promise.all([
+    getMonthDetails(id, userId),
+    getCategories(),
+  ]);
+
+  if (!detailsResult.success || !detailsResult.data) redirect("/dashboard");
+
+  const { month, expenses, totals, byCategory } = detailsResult.data;
+  const categories = categoriesResult.data ?? [];
+
+  return (
+    <MonthDetailsClient
+      monthId={id}
+      monthName={month.month_name}
+      isActive={month.is_active}
+      cashInitial={month.cash_initial}
+      mpInitial={month.mp_initial}
+      userId={userId}
+      initialExpenses={expenses}
+      initialTotals={totals}
+      initialByCategory={byCategory}
+      categories={categories}
+    />
+  );
+}
 
 export default async function MonthPage({
   params,
@@ -16,41 +45,12 @@ export default async function MonthPage({
   const userId = cookieStore.get("session_user_id")?.value;
   if (!userId) redirect("/login");
 
-  // 2. Obtener datos del mes (nombre + presupuestos iniciales)
-  const monthResult = await turso.execute({
-    sql: `SELECT * FROM budget_months WHERE id = ? AND user_id = ?`,
-    args: [id, userId],
-  });
-
-  if (monthResult.rows.length === 0) redirect("/dashboard");
-
-  const month = monthResult.rows[0];
-
-  // 3. Obtener detalles (gastos, totales, categorías)
-  const [detailsResult, categoriesResult] = await Promise.all([
-    getMonthDetails(id, userId),
-    getCategoriesByUser(userId),
-  ]);
-
-  if (!detailsResult.success || !detailsResult.data) redirect("/dashboard");
-
-  const details = detailsResult.data;
-  const categories = categoriesResult.data ?? [];
-
   return (
     <div className="p-4 md:p-6 w-full">
-      <MonthDetailsClient
-        monthId={id}
-        monthName={month.month_name as string}
-        isActive={Boolean(month.is_active)}
-        cashInitial={month.cash_initial as number}
-        mpInitial={month.mp_initial as number}
-        userId={userId}
-        initialExpenses={details.expenses}
-        initialTotals={details.totals}
-        initialByCategory={details.byCategory}
-        categories={categories}
-      />
+      {/* El layout se envía inmediatamente, el contenido streamea */}
+      <Suspense fallback={<MonthDetailsSkeleton />}>
+        <MonthContent id={id} userId={userId} />
+      </Suspense>
     </div>
   );
 }
