@@ -10,6 +10,7 @@ import {
   NavbarItem,
   NavbarMenuItem,
 } from "@heroui/navbar";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { link as linkStyles } from "@heroui/theme";
 import NextLink from "next/link";
@@ -20,6 +21,14 @@ import { ChartNoAxesColumn, LogOut } from "lucide-react";
 import { Divider } from "@heroui/divider";
 import { Button } from "@heroui/button";
 import { logout } from "@/actions/auth";
+
+const NavbarBreadcrumb = dynamic(
+  () => import("@/components/navbar-breadcrumb").then((m) => m.NavbarBreadcrumb),
+  {
+    ssr: false,
+    loading: () => <span className="text-sm text-foreground">Resumen</span>,
+  }
+);
 
 export const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -44,6 +53,7 @@ export const Navbar = () => {
       maxWidth="xl"
       position="sticky"
       onMenuOpenChange={setIsMenuOpen}
+      isBordered
     >
       {/* Contenido Superior (Brand y Desktop Nav) */}
       <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
@@ -52,33 +62,9 @@ export const Navbar = () => {
             <ChartNoAxesColumn />
           </NextLink>
         </NavbarBrand>
-        <ul className="hidden lg:flex gap-4 justify-start ml-5">
-          {siteConfig.navItems.map((item, index, array) => {
-            const isActive = pathname === item.href;
-
-            return (
-              <React.Fragment key={item.href}>
-                <NavbarItem isActive={isActive}>
-                  <NextLink
-                    data-text={item.label}
-                    className={clsx(
-                      linkStyles({ color: "foreground" }), 
-                      isActive ? "!text-blue-500 font-bold" : "",
-                      "flex flex-col items-center after:content-[attr(data-text)] after:font-bold after:h-0 after:invisible after:overflow-hidden"
-                    )}
-                    href={item.href}
-                  >
-                    {item.label}
-                  </NextLink>
-                </NavbarItem>
-                
-                {index < array.length - 1 && (
-                  <Divider orientation="vertical" className="h-5 self-center opacity-50 mx-2" />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </ul>
+        <div className="hidden lg:flex ml-5">
+          <NavbarBreadcrumb />
+        </div>
       </NavbarContent>
 
       {/* Acciones Derecha (Desktop) */}
@@ -114,22 +100,10 @@ export const Navbar = () => {
       {/* Menú Desplegable Móvil */}
       <NavbarMenu>
         <div className="mx-4 mt-2 flex flex-col gap-2">
-          {siteConfig.navMenuItems.map((item, index) => (
-            <NavbarMenuItem key={`${item.label}-${index}`}>
-              <NextLink
-                onClick={() => setIsMenuOpen(false)}
-                className={clsx(
-                  linkStyles({ color: "foreground" }),
-                  "text-lg w-full",
-                  pathname === item.href ? "text-blue-500 font-bold" : ""
-                )}
-                href={item.href}
-              >
-                {item.label}
-              </NextLink>
-            </NavbarMenuItem>
-          ))}
-          
+          <NavbarMenuItem>
+            <NavbarBreadcrumb />
+          </NavbarMenuItem>
+
           {/* Botón de Cerrar Sesión en Móvil */}
           <Divider className="my-2" />
           <NavbarMenuItem>

@@ -5,22 +5,22 @@ export const siteConfig = {
   description: "Gestión de mis gastos mensuales",
   navItems: [
     {
-      label: "Dashboard",
+      label: "Resumen",
       href: "/",
     },
-    {
-      label: "Categorías",
-      href: "/categorias",
-    },
+    // {
+    //   label: "Categorías",
+    //   href: "/categorias",
+    // },
   ],
   navMenuItems: [
     {
-      label: "Dashboard",
+      label: "Resumen",
       href: "/",
     },
-    {
-      label: "Categorías",
-      href: "/categorias",
-    },
+    // {
+    //   label: "Categorías",
+    //   href: "/categorias",
+    // },
   ],
 };

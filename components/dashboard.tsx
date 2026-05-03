@@ -15,6 +15,7 @@ import {
   LogInIcon,
   BanknoteIcon,
   WalletIcon,
+  Plus,
 } from "lucide-react";
 import { createMonth, deleteMonth } from "@/actions/month";
 import type { BudgetMonth } from "@/types/index";
@@ -104,10 +105,10 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
         </div>
         <Button
           onPress={onOpen}
-          className="bg-black text-white font-semibold w-full md:w-auto"
-          startContent={<PlusIcon size={18} />}
+          className="w-full md:w-auto"
+          startContent={<Plus size={18} />}
+          color="primary"
           radius="full"
-          size="lg"
         >
           Crear Nuevo Mes
         </Button>

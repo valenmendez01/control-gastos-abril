@@ -1,17 +1,16 @@
 "use client";
 
 import { useState, useTransition, useMemo, useEffect } from "react";
+import { useBreadcrumbStore } from "@/store/breadcrumb-store";
 import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
+import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Select, SelectItem } from "@heroui/select";
-import { Divider } from "@heroui/divider";
 import { Modal, ModalContent, ModalHeader, ModalBody, useDisclosure } from "@heroui/modal";
 import { Progress } from "@heroui/progress";
 import { Input } from "@heroui/input";
 import { Chip } from "@heroui/chip";
 import { Pagination } from "@heroui/pagination";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
-import { Switch } from "@heroui/switch";
 import {
   Plus,
   Wallet,
@@ -31,8 +30,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createExpense, deleteExpense, type ExpenseWithCategory } from "@/actions/expense";
-import { toggleMonthStatus } from "@/actions/month";
 import type { Category } from "@/types/index";
+import { parseAbsoluteToLocal } from "@internationalized/date";
+import { Divider } from "@heroui/divider";
 
 // ─── Icon map ─────────────────────────────────────────────────────────────────
 
@@ -96,9 +96,18 @@ function fmt(n: number) {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const MONTHS = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+function formatDate(dateStr: string, showTime = true) {
+  try {
+    const normalized = dateStr.replace(" ", "T") + "Z";
+    const d = parseAbsoluteToLocal(normalized);
+    const date = `${d.day} de ${MONTHS[d.month - 1]}`;
+    if (!showTime) return date;
+    return `${date}, ${String(d.hour).padStart(2, "0")}:${String(d.minute).padStart(2, "0")}hs`;
+  } catch (e) {
+    return dateStr;
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -130,22 +139,18 @@ export function MonthDetailsClient({
     paymentMethod: "efectivo" as "efectivo" | "mercadopago",
   });
 
-  const [isActive, setIsActive] = useState(initialIsActive);
-  const [isSwitchPending, startSwitchTransition] = useTransition();
-
   const ITEMS_PER_PAGE = 5;
   const [currentPage, setCurrentPage] = useState(1);
 
-  const handleToggleStatus = (selected: boolean) => {
-    setIsActive(selected); // Optimistic update
-    startSwitchTransition(async () => {
-      const res = await toggleMonthStatus(monthId, userId, selected);
-      if (!res.success) {
-        setIsActive(!selected); // Revertir si falla
-        console.error(res.error);
-      }
-    });
-  };
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const setMonthName = useBreadcrumbStore((s) => s.setMonthName);
+
+  useEffect(() => {
+    setMonthName(monthName);
+    return () => setMonthName(null); // limpia al salir del mes
+  }, [monthName, setMonthName]);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
@@ -340,16 +345,16 @@ export function MonthDetailsClient({
         </span>
         <div className="flex gap-2">
           <Button
-            variant={form.paymentMethod === "efectivo" ? "solid" : "flat"}
-            color={form.paymentMethod === "efectivo" ? "default" : "default"}
-            className={`flex-1 font-medium ${form.paymentMethod === "efectivo" ? "bg-black text-white" : ""}`}
+            variant={form.paymentMethod === "efectivo" ? "flat" : "flat"}
+            color={form.paymentMethod === "efectivo" ? "primary" : "default"}
+            className="flex-1 font-medium"
             startContent={<Wallet size={16} />}
             onPress={() => setForm({ ...form, paymentMethod: "efectivo" })}
           >
             Efectivo
           </Button>
           <Button
-            variant={form.paymentMethod === "mercadopago" ? "solid" : "flat"}
+            variant={form.paymentMethod === "mercadopago" ? "flat" : "flat"}
             color={form.paymentMethod === "mercadopago" ? "primary" : "default"}
             className="flex-1 font-medium"
             startContent={<Smartphone size={16} />}
@@ -367,7 +372,8 @@ export function MonthDetailsClient({
       )}
 
       <Button
-        className="bg-black text-white w-full mt-2 font-semibold"
+        className="w-full mt-2 font-semibold"
+        color="primary"
         size="lg"
         isLoading={isPending}
         onPress={() => handleCreate(onClose)}
@@ -382,39 +388,30 @@ export function MonthDetailsClient({
   return (
     <div className="max-w-7xl mx-auto w-full flex flex-col gap-6">
       {/* Header */}
-      <div className="flex justify-between items-end">
-        <div className="flex items-start gap-3 flex-1">
-          <Link href="/">
-            <Button isIconOnly variant="light" size="sm" className="mt-1">
-              <ArrowLeft size={18} />
-            </Button>
-          </Link>
-          <div className="flex flex-1 items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">{monthName}</h1>
-              <p className="text-default-500 text-sm">Control de presupuesto y gastos del mes.</p>
-            </div>
-            <Switch 
-              isSelected={isActive} 
-              onValueChange={handleToggleStatus}
-              isDisabled={isSwitchPending}
-              color="success"
-              size="sm"
-            >
-              <span className="text-sm font-medium ml-1">
-                {isActive ? "Activo" : "Inactivo"}
-              </span>
-            </Switch>
+      <div className="flex items-start gap-3 flex-1">
+        <Link href="/">
+          <Button isIconOnly variant="light" size="sm" className="mt-1">
+            <ArrowLeft size={18} />
+          </Button>
+        </Link>
+        <div className="flex flex-1 items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">{monthName}</h1>
+            <p className="text-default-500 text-sm">Control de presupuesto y gastos del mes.</p>
           </div>
         </div>
-        <Button
-          className="bg-black text-white lg:hidden"
-          endContent={<Plus size={18} />}
-          onPress={onOpen}
-        >
-          Nuevo
-        </Button>
       </div>
+
+      <Button
+        className="lg:hidden"
+        endContent={<Plus size={18} />}
+        onPress={onOpen}
+        color="primary"
+        variant="flat"
+        radius="full"
+      >
+        Nuevo Gasto
+      </Button>
 
       {/* Layout principal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -425,9 +422,9 @@ export function MonthDetailsClient({
           {/* Tarjetas de resumen */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Disponible */}
-            <Card className={`${isOverBudget ? "bg-danger" : "bg-black"} text-white`}>
-              <CardBody className="py-5">
-                <span className="text-xs font-bold text-white/60 uppercase tracking-wider">
+            <Card className={`${isOverBudget ? "bg-danger" : "bg-primary"} text-white`}>
+              <CardBody className="p-5 flex justify-center">
+                <span className="text-xs font-bold text-white/90 uppercase tracking-wider">
                   {isOverBudget ? "⚠ Excedido" : "Total restante"}
                 </span>
                 <h2 className="text-3xl font-bold mt-1">
@@ -439,8 +436,13 @@ export function MonthDetailsClient({
                   value={spentPercent}
                   color={isOverBudget ? "danger" : "default"}
                   className="mt-3 opacity-50"
+                  aria-label="Progreso total gastado"
+                  classNames={{
+                    indicator: isOverBudget ? "" : "bg-white",
+                    track: "bg-white/40",
+                  }}
                 />
-                <span className="text-xs text-white/50 mt-1">
+                <span className="text-xs text-white/90 mt-1">
                   ${fmt(totals.total_spent)} gastados de ${fmt(totalInitial)}
                 </span>
               </CardBody>
@@ -448,7 +450,7 @@ export function MonthDetailsClient({
 
             {/* Efectivo */}
             <Card>
-              <CardBody className="py-5">
+              <CardBody className="p-5 flex justify-center">
                 <div className="flex items-center gap-2 text-default-500">
                   <Wallet size={16} />
                   <span className="text-xs font-bold uppercase tracking-wider">Efectivo disponible</span>
@@ -457,7 +459,7 @@ export function MonthDetailsClient({
                   ${fmt(Math.abs(totals.cash_available))}
                   {totals.cash_available < 0 && <span className="text-sm text-danger"> excedido</span>}
                 </h2>
-                <Progress size="sm" value={cashPercent} color={cashPercent >= 100 ? "danger" : "default"} className="mt-2" />
+                <Progress size="sm" value={cashPercent} color={cashPercent >= 100 ? "danger" : "default"} className="mt-2" aria-label="Progreso efectivo" />
                 <span className="text-xs text-default-400 mt-1">
                   ${fmt(totals.cash_spent)} / ${fmt(cashInitial)}
                 </span>
@@ -466,7 +468,7 @@ export function MonthDetailsClient({
 
             {/* MercadoPago */}
             <Card>
-              <CardBody className="py-5">
+              <CardBody className="p-5 flex justify-center">
                 <div className="flex items-center gap-2 text-default-500">
                   <Smartphone size={16} />
                   <span className="text-xs font-bold uppercase tracking-wider">MP disponible</span>
@@ -475,7 +477,7 @@ export function MonthDetailsClient({
                   ${fmt(Math.abs(totals.mp_available))}
                   {totals.mp_available < 0 && <span className="text-sm opacity-80"> excedido</span>}
                 </h2>
-                <Progress size="sm" value={mpPercent} color={mpPercent >= 100 ? "danger" : "default"} className="mt-2 opacity-60" />
+                <Progress size="sm" value={mpPercent} color={mpPercent >= 100 ? "danger" : "default"} className="mt-2 opacity-60" aria-label="Progreso MercadoPago" />
                 <span className="text-xs text-default-400 mt-1">
                   ${fmt(totals.mp_spent)} / ${fmt(mpInitial)}
                 </span>
@@ -485,9 +487,11 @@ export function MonthDetailsClient({
 
           {/* Resumen por categorías */}
           {byCategory.length > 0 && (
-            <Card>
+            <Card className="p-2">
+              <CardHeader>
+                <h2 className="font-bold text-xl">Gastos por Categoría</h2>
+              </CardHeader>
               <CardBody>
-                <h3 className="font-semibold text-lg mb-6">Por Categorías</h3>
                 <div className="flex flex-col gap-5">
                   {byCategory.map((cat) => {
                     const pct = Math.min((cat.total / totalInitial) * 100, 100);
@@ -521,18 +525,90 @@ export function MonthDetailsClient({
           )}
 
           {/* Lista de gastos */}
-          <Card>
+          <Card className="p-2">
+            <CardHeader>
+              <h2 className="font-bold text-xl flex items-center">
+                Historial de Gastos
+                <Chip size="sm" variant="flat" className="ml-2 text-xs">{expenses.length}</Chip>
+              </h2>
+            </CardHeader>
             <CardBody>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-lg">
-                  Gastos
-                  <Chip size="sm" variant="flat" className="ml-2 text-xs">{expenses.length}</Chip>
-                </h3>
+
+              {/* ── Vista Móvil: lista paginada ── */}
+              <div className="flex flex-col lg:hidden">
+                {paginatedExpenses.length === 0 ? (
+                  <div className="flex flex-col items-center py-8 text-default-400 gap-2">
+                    <TrendingDown size={40} strokeWidth={1.2} />
+                    <p className="font-medium">Sin gastos registrados</p>
+                    <p className="text-sm">Agregá tu primer gasto del mes.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {paginatedExpenses.map((expense, i) => (
+                      <div key={expense.id}>
+                        <div className="flex justify-between items-center py-2 px-1 rounded-lg hover:bg-default-50 group">
+                          <div className="flex gap-3 items-center flex-1 min-w-0">
+                            <CategoryIcon icon={expense.category_icon} color={expense.category_color} />
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm truncate">{expense.description}</p>
+                              <p className="text-xs text-default-500">
+                                {mounted ? formatDate(expense.date, false) : ""}
+                              </p>
+                              <p className="text-xs text-default-500">{expense.category_name}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-2 shrink-0">
+                            <div className="text-right">
+                              <p className="font-bold text-sm">-${fmt(expense.amount)}</p>
+                              <Chip
+                                size="sm"
+                                variant="flat"
+                                color="default"
+                                className="text-[10px]"
+                              >
+                                {expense.payment_method === "efectivo" ? "Efectivo" : "Mp"}
+                              </Chip>
+                            </div>
+                            <Button
+                              isIconOnly
+                              variant="light"
+                              size="sm"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              isLoading={isPending}
+                              onPress={() => handleDelete(expense.id)}
+                            >
+                              <Trash2 size={14} className="text-danger" />
+                            </Button>
+                          </div>
+                        </div>
+                        {i < paginatedExpenses.length - 1 && <Divider className="my-0.5" />}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Paginación móvil */}
+                {totalPages > 1 && (
+                  <div className="flex w-full justify-center mt-4">
+                    <Pagination
+                      isCompact
+                      showControls
+                      showShadow
+                      color="default"
+                      page={currentPage}
+                      total={totalPages}
+                      onChange={setCurrentPage}
+                    />
+                  </div>
+                )}
               </div>
 
+              {/* ── Vista Desktop: tabla ── */}
               <Table
                 aria-label="Lista de gastos"
                 removeWrapper
+                layout="fixed"
+                className="hidden lg:block"
                 bottomContent={
                   <div className="flex w-full justify-center">
                     <Pagination
@@ -552,11 +628,11 @@ export function MonthDetailsClient({
                 }}
               >
                 <TableHeader>
-                  <TableColumn>GASTO</TableColumn>
-                  <TableColumn>FECHA</TableColumn>
-                  <TableColumn>MÉTODO</TableColumn>
-                  <TableColumn className="text-right">MONTO</TableColumn>
-                  <TableColumn className="w-10"> </TableColumn>
+                  <TableColumn width={80}>GASTO</TableColumn>
+                  <TableColumn width={90}>FECHA</TableColumn>
+                  <TableColumn width={80}>MÉTODO</TableColumn>
+                  <TableColumn width={80} align="end">MONTO</TableColumn>
+                  <TableColumn width={40} hideHeader> </TableColumn>
                 </TableHeader>
                 <TableBody
                   items={paginatedExpenses}
@@ -581,17 +657,12 @@ export function MonthDetailsClient({
                       </TableCell>
                       <TableCell>
                         <span className="text-xs text-default-500 whitespace-nowrap">
-                          {formatDate(expense.date)}
+                          {mounted ? formatDate(expense.date) : ""}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          size="sm"
-                          variant="flat"
-                          color={expense.payment_method === "efectivo" ? "default" : "primary"}
-                          className="text-[10px]"
-                        >
-                          {expense.payment_method === "efectivo" ? "Efectivo" : "MP"}
+                        <Chip size="sm" variant="flat" color="default" className="text-[10px]">
+                          {expense.payment_method === "efectivo" ? "Efectivo" : "MercadoPago"}
                         </Chip>
                       </TableCell>
                       <TableCell className="text-right">
@@ -611,6 +682,7 @@ export function MonthDetailsClient({
                   )}
                 </TableBody>
               </Table>
+
             </CardBody>
           </Card>
         </div>
@@ -620,7 +692,7 @@ export function MonthDetailsClient({
           <Card className="sticky top-6">
             <CardBody className="p-6">
               <div className="flex items-center gap-2 mb-6">
-                <div className="bg-black text-white p-1.5 rounded-full">
+                <div className="bg-primary text-white p-1.5 rounded-full">
                   <Plus size={14} />
                 </div>
                 <h3 className="text-xl font-semibold">Nuevo Gasto</h3>
