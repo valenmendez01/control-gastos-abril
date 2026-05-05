@@ -24,10 +24,11 @@ export interface BudgetMonth {
 export interface Expense {
   id: string;
   month_id: string;
-  category_id: string;
+  category_id: string | null;
   description: string;
   amount: number;
   payment_method: "efectivo" | "mercadopago";
+  type: "expense" | "income";
   date: string;
 }
 

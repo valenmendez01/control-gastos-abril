@@ -30,10 +30,11 @@ CREATE TABLE IF NOT EXISTS budget_months (
 CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY,
     month_id TEXT NOT NULL,
-    category_id TEXT NOT NULL,
+    category_id TEXT,
     description TEXT NOT NULL,
     amount REAL NOT NULL,
     payment_method TEXT CHECK(payment_method IN ('efectivo', 'mercadopago')) NOT NULL,
+    type TEXT CHECK(type IN ('expense', 'income')) NOT NULL DEFAULT 'expense',
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (month_id) REFERENCES budget_months(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -56,3 +57,10 @@ INSERT OR IGNORE INTO categories (id, name, icon, color) VALUES
 ('cat_6', 'Servicios', 'Zap', '#6b7280'),
 ('cat_7', 'Ropa', 'Shirt', '#ec4899'),
 ('cat_8', 'Otros', 'MoreHorizontal', '#64748b');
+
+-- Insertar usuario
+-- INSERT INTO users (id, email, password_hash) 
+-- VALUES ('user_1', 'tu@email.com', '$2b$10$hash_generado_por_bcrypt'); 
+
+-- Generar hash de contraseña con bcrypt (ejemplo en Node.js)
+-- node -e "const bcrypt = require('bcryptjs'); bcrypt.hash('TU_PASSWORD', 10).then(h => console.log(h));" 

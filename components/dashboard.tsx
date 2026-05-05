@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useEffect, useState, useTransition } from "react";
 import { Button } from "@heroui/button";
 import { Progress } from "@heroui/progress";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
@@ -20,6 +20,7 @@ import {
 import { createMonth, deleteMonth } from "@/actions/month";
 import type { BudgetMonth } from "@/types/index";
 import Link from "next/link";
+import { Select, SelectItem } from "@heroui/select";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,17 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
     mpInitial: "",
   });
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleCreateMonth = (onClose: () => void) => {
@@ -78,18 +90,20 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
         return;
       }
 
-      setMonths((prev) => [result.data!, ...prev]);
+      setMonths((prev) => [result.data!, ...prev.map(m => ({ ...m, is_active: false }))]);
       setNewMonth({ monthName: "", year: String(CURRENT_YEAR), cashInitial: "", mpInitial: "" });
       onClose();
     });
   };
 
   const handleDelete = (monthId: string) => {
+    setDeletingId(monthId);
     startTransition(async () => {
       const result = await deleteMonth(monthId, userId);
       if (result.success) {
         setMonths((prev) => prev.filter((m) => m.id !== monthId));
       }
+      setDeletingId(null);
     });
   };
 
@@ -100,7 +114,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Resumen de Meses</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Resumen de Meses</h1>
           <p className="text-gray-500">Gestiona y organiza tus periodos financieros.</p>
         </div>
         <Button
@@ -139,7 +153,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
             const isOverBudget = dineroRestante < 0;
 
             return (
-              <Card key={month.id} className="shadow-sm border border-gray-100 p-2">
+              <Card key={month.id} className="p-2">
                 <CardHeader className="flex justify-between items-start pb-0">
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
@@ -166,7 +180,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                           isIconOnly
                           variant="light"
                           size="sm"
-                          isLoading={isPending}
+                          isLoading={deletingId === month.id}
                           onPress={() => handleDelete(month.id)}
                         >
                           <TrashIcon size={16} className="text-danger" />
@@ -181,7 +195,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                       isIconOnly
                       variant="light"
                       size="sm"
-                      isLoading={isPending}
+                      isLoading={deletingId === month.id}
                       onPress={() => handleDelete(month.id)}
                     >
                       <TrashIcon size={16} className="text-danger" />
@@ -196,7 +210,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                       {isActive ? "Dinero Restante" : "Dinero Sobrante"}
                     </span>
                     <div className="flex items-baseline gap-1">
-                      <span className={`text-2xl font-bold ${isOverBudget ? "text-danger" : "text-gray-900"}`}>
+                      <span className={`text-2xl font-bold ${isOverBudget ? "text-danger" : ""}`}>
                         ${Math.abs(dineroRestante).toLocaleString("es-AR")}
                       </span>
                       {isOverBudget && <span className="text-xs text-danger font-semibold">excedido</span>}
@@ -230,8 +244,9 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                       {/* Botón Entrar envuelto en Link */}
                       <Link href={`/mes/${month.id}`} className="flex-1 md:flex-none flex">
                         <Button
-                          className="bg-gray-200 text-gray-700 font-medium w-full"
+                          className="font-medium w-full"
                           startContent={<LogInIcon size={16} />}
+                          color="primary"
                           variant="flat"
                         >
                           Entrar
@@ -257,26 +272,28 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
       )}
 
       {/* Modal: Crear Nuevo Mes */}
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center" backdrop="blur">
+      <Modal classNames={{ backdrop: "z-[250]", wrapper: "z-[300]" }} isOpen={isOpen} placement="center" size={isMobile ? "xs" : "lg"} onOpenChange={onOpenChange} backdrop="blur">
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader className="flex flex-col gap-1">Crear Nuevo Periodo</ModalHeader>
+              <ModalHeader className="flex flex-col gap-1 text-xl">Crear Nuevo Periodo</ModalHeader>
               <ModalBody className="gap-4">
                 {/* Month + Year */}
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500 mb-1 block">Mes</label>
-                    <select
-                      className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                      value={newMonth.monthName}
-                      onChange={(e) => setNewMonth({ ...newMonth, monthName: e.target.value })}
+                    <Select
+                      label="Mes"
+                      placeholder="Seleccionar..."
+                      variant="bordered"
+                      selectedKeys={newMonth.monthName ? [newMonth.monthName] : []}
+                      onSelectionChange={(keys) =>
+                        setNewMonth({ ...newMonth, monthName: Array.from(keys)[0] as string ?? "" })
+                      }
                     >
-                      <option value="">Seleccionar...</option>
                       {MONTH_NAMES.map((m) => (
-                        <option key={m} value={m}>{m}</option>
+                        <SelectItem key={m}>{m}</SelectItem>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div className="w-28">
                     <Input
@@ -315,7 +332,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                   type="number"
                   min={0}
                   startContent={
-                    <div className="flex items-center gap-1 text-blue-400">
+                    <div className="flex items-center gap-1 text-default-400">
                       <WalletIcon size={14} />
                       <span className="text-small">$</span>
                     </div>
@@ -347,7 +364,7 @@ export default function Dashboard({ initialMonths, userId }: DashboardProps) {
                   Cancelar
                 </Button>
                 <Button
-                  className="bg-black text-white"
+                  color="primary"
                   onPress={() => handleCreateMonth(onClose)}
                   isLoading={isPending}
                 >

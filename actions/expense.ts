@@ -99,10 +99,11 @@ export async function getMonthDetails(
     const expenses: ExpenseWithCategory[] = expensesResult.rows.map((row) => ({
       id: row.id as string,
       month_id: row.month_id as string,
-      category_id: row.category_id as string,
+      category_id: (row.category_id as string | null) ?? "",
       description: row.description as string,
       amount: row.amount as number,
       payment_method: row.payment_method as "efectivo" | "mercadopago",
+      type: (row.type as "expense" | "income") ?? "expense",
       date: row.date as string,
       category_name: (row.category_name as string) ?? "Sin categoría",
       category_color: (row.category_color as string) ?? "#64748b",
@@ -111,11 +112,19 @@ export async function getMonthDetails(
 
     // Totales
     const cashSpent = expenses
-      .filter((e) => e.payment_method === "efectivo")
+      .filter((e) => e.payment_method === "efectivo" && e.type === "expense")
       .reduce((acc, e) => acc + e.amount, 0);
 
     const mpSpent = expenses
-      .filter((e) => e.payment_method === "mercadopago")
+      .filter((e) => e.payment_method === "mercadopago" && e.type === "expense")
+      .reduce((acc, e) => acc + e.amount, 0);
+
+    const cashIncome = expenses
+      .filter((e) => e.payment_method === "efectivo" && e.type === "income")
+      .reduce((acc, e) => acc + e.amount, 0);
+
+    const mpIncome = expenses
+      .filter((e) => e.payment_method === "mercadopago" && e.type === "income")
       .reduce((acc, e) => acc + e.amount, 0);
 
     // Agrupado por categoría
@@ -131,6 +140,7 @@ export async function getMonthDetails(
     >();
 
     for (const e of expenses) {
+      if (e.type === "income" || !e.category_id) continue;
       const existing = categoryMap.get(e.category_id);
       if (existing) {
         existing.total += e.amount;
@@ -164,9 +174,9 @@ export async function getMonthDetails(
           cash_spent: cashSpent,
           mp_spent: mpSpent,
           total_spent: cashSpent + mpSpent,
-          cash_available: cashInitial - cashSpent,
-          mp_available: mpInitial - mpSpent,
-          total_available: cashInitial + mpInitial - cashSpent - mpSpent,
+          cash_available: cashInitial - cashSpent + cashIncome,
+          mp_available: mpInitial - mpSpent + mpIncome,
+          total_available: cashInitial + mpInitial - cashSpent - mpSpent + cashIncome + mpIncome,
         },
         byCategory,
       },
@@ -179,23 +189,27 @@ export async function getMonthDetails(
 
 export interface CreateExpenseInput {
   monthId: string;
-  categoryId: string;
+  categoryId: string | null;
   description: string;
   amount: number;
   paymentMethod: "efectivo" | "mercadopago";
+  type: "expense" | "income";
 }
 
 export async function createExpense(
   input: CreateExpenseInput,
   userId: string
 ): Promise<ActionResult<Expense>> {
-  const { monthId, categoryId, description, amount, paymentMethod } = input;
+  const { monthId, categoryId, description, amount, paymentMethod, type } = input;
 
   if (!description.trim()) {
     return { success: false, error: "La descripción es requerida." };
   }
   if (amount <= 0) {
     return { success: false, error: "El monto debe ser mayor a 0." };
+  }
+  if (type === "expense" && !categoryId) {  // solo obligatorio en gastos
+    return { success: false, error: "Seleccioná una categoría." };
   }
 
   try {
@@ -210,9 +224,9 @@ export async function createExpense(
     const id = nanoid();
 
     await db.execute({
-      sql: `INSERT INTO expenses (id, month_id, category_id, description, amount, payment_method)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [id, monthId, categoryId, description.trim(), amount, paymentMethod],
+      sql: `INSERT INTO expenses (id, month_id, category_id, description, amount, payment_method, type)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [id, monthId, categoryId, description.trim(), amount, paymentMethod, type],
     });
 
     const result = await db.execute({
@@ -224,10 +238,11 @@ export async function createExpense(
     const expense: Expense = {
       id: row.id as string,
       month_id: row.month_id as string,
-      category_id: row.category_id as string,
+      category_id: (row.category_id as string | null) ?? "",
       description: row.description as string,
       amount: row.amount as number,
       payment_method: row.payment_method as "efectivo" | "mercadopago",
+      type: (row.type as "expense" | "income") ?? "expense",
       date: row.date as string,
     };
 

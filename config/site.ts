@@ -1,7 +1,7 @@
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
-  name: "Turnos",
+  name: "Gastos Mensuales",
   description: "Gestión de mis gastos mensuales",
   navItems: [
     {

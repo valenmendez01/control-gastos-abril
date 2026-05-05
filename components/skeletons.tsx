@@ -4,7 +4,6 @@ export function MonthDetailsSkeleton() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="h-8 bg-gray-200 rounded-lg w-48" />
-        <div className="h-10 bg-gray-200 rounded-full w-32" />
       </div>
 
       {/* Totals cards */}

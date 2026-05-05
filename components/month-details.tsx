@@ -27,12 +27,14 @@ import {
   MoreHorizontal,
   TrendingDown,
   AlertCircle,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { createExpense, deleteExpense, type ExpenseWithCategory } from "@/actions/expense";
 import type { Category } from "@/types/index";
 import { parseAbsoluteToLocal } from "@internationalized/date";
 import { Divider } from "@heroui/divider";
+import { Switch } from "@heroui/switch";
 
 // ─── Icon map ─────────────────────────────────────────────────────────────────
 
@@ -135,8 +137,9 @@ export function MonthDetailsClient({
   const [form, setForm] = useState({
     amount: "",
     description: "",
-    categoryId: "",
+    categoryId: "" as string | null,
     paymentMethod: "efectivo" as "efectivo" | "mercadopago",
+    type: "expense" as "expense" | "income",
   });
 
   const ITEMS_PER_PAGE = 5;
@@ -183,25 +186,33 @@ export function MonthDetailsClient({
   // ── Recalculate totals from expenses (client-side optimistic) ────────────────
 
   function recalculate(newExpenses: ExpenseWithCategory[]) {
+    // Solo los gastos restan; los ingresos se tratan aparte
     const cashSpent = newExpenses
-      .filter((e) => e.payment_method === "efectivo")
+      .filter((e) => e.payment_method === "efectivo" && e.type === "expense")
       .reduce((acc, e) => acc + e.amount, 0);
     const mpSpent = newExpenses
-      .filter((e) => e.payment_method === "mercadopago")
+      .filter((e) => e.payment_method === "mercadopago" && e.type === "expense")
+      .reduce((acc, e) => acc + e.amount, 0);
+    const cashIncome = newExpenses
+      .filter((e) => e.payment_method === "efectivo" && e.type === "income")
+      .reduce((acc, e) => acc + e.amount, 0);
+    const mpIncome = newExpenses
+      .filter((e) => e.payment_method === "mercadopago" && e.type === "income")
       .reduce((acc, e) => acc + e.amount, 0);
 
     setTotals({
       cash_spent: cashSpent,
       mp_spent: mpSpent,
       total_spent: cashSpent + mpSpent,
-      cash_available: cashInitial - cashSpent,
-      mp_available: mpInitial - mpSpent,
-      total_available: cashInitial + mpInitial - cashSpent - mpSpent,
+      cash_available: cashInitial - cashSpent + cashIncome,
+      mp_available: mpInitial - mpSpent + mpIncome,
+      total_available: cashInitial + mpInitial - cashSpent - mpSpent + cashIncome + mpIncome,
     });
 
     // Recalculate by category
     const map = new Map<string, CategoryTotal>();
     for (const e of newExpenses) {
+      if (e.type === "income" || !e.category_id) continue;
       const existing = map.get(e.category_id);
       if (existing) {
         existing.total += e.amount;
@@ -221,7 +232,7 @@ export function MonthDetailsClient({
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const resetForm = () => {
-    setForm({ amount: "", description: "", categoryId: "", paymentMethod: "efectivo" });
+    setForm({ amount: "", description: "", categoryId: "", paymentMethod: "efectivo", type: "expense" });
     setFormError(null);
   };
 
@@ -237,7 +248,7 @@ export function MonthDetailsClient({
       setFormError("Ingresá un monto válido.");
       return;
     }
-    if (!form.categoryId) {
+    if (form.type === "expense" && !form.categoryId) {  // 👈
       setFormError("Seleccioná una categoría.");
       return;
     }
@@ -250,6 +261,7 @@ export function MonthDetailsClient({
           description: form.description,
           amount,
           paymentMethod: form.paymentMethod,
+          type: form.type,
         },
         userId
       );
@@ -260,11 +272,11 @@ export function MonthDetailsClient({
       }
 
       // Optimistic update: find category info
-      const cat = categories.find((c) => c.id === form.categoryId);
+      const cat = form.categoryId ? categories.find((c) => c.id === form.categoryId) : undefined;
       const newExpense: ExpenseWithCategory = {
         ...result.data,
-        category_name: cat?.name ?? "Sin categoría",
-        category_color: cat?.color ?? "#64748b",
+        category_name: cat?.name ?? (form.type === "income" ? "Ingreso" : "Sin categoría"),
+        category_color: cat?.color ?? (form.type === "income" ? "#22c55e" : "#64748b"),
         category_icon: cat?.icon ?? null,
       };
 
@@ -280,9 +292,11 @@ export function MonthDetailsClient({
     startTransition(async () => {
       const result = await deleteExpense(expenseId, userId);
       if (result.success) {
-        const updated = expenses.filter((e) => e.id !== expenseId);
-        setExpenses(updated);
-        recalculate(updated);
+        setExpenses((prev) => {
+          const updated = prev.filter((e) => e.id !== expenseId);
+          recalculate(updated);
+          return updated;
+        });
       }
     });
   };
@@ -310,34 +324,34 @@ export function MonthDetailsClient({
         value={form.description}
         onChange={(e) => setForm({ ...form, description: e.target.value })}
       />
-      <Select
-        id="category-select"
-        aria-label="Categoría"
-        label="Categoría"
-        placeholder="Seleccionar..."
-        variant="bordered"
-        // Usa un Set (formato requerido por la librería) o un array vacío
-        selectedKeys={form.categoryId ? new Set([form.categoryId]) : new Set([])}
-        onSelectionChange={(keys) => {
-          // keys es un Set, tomamos el primer valor (o string vacío si lo deseleccionan)
-          const val = Array.from(keys)[0]?.toString() || "";
-          setForm({ ...form, categoryId: val });
-        }}
-      >
-        {categories.map((cat) => (
-          <SelectItem
-            key={cat.id.toString()} // Asegura que el key sea un string
-            textValue={cat.name} // textValue es buena práctica para accesibilidad y búsqueda
-            startContent={
-              <div style={{ color: cat.color }}>
-                {cat.icon && ICON_MAP[cat.icon] ? ICON_MAP[cat.icon] : <MoreHorizontal size={16} />}
-              </div>
-            }
-          >
-            {cat.name}
-          </SelectItem>
-        ))}
-      </Select>
+      {form.type === "expense" && (
+        <Select
+          id="category-select"
+          aria-label="Categoría"
+          label="Categoría"
+          placeholder="Seleccionar..."
+          variant="bordered"
+          selectedKeys={form.categoryId ? new Set([form.categoryId]) : new Set([])}
+          onSelectionChange={(keys) => {
+            const val = Array.from(keys)[0]?.toString() || "";
+            setForm({ ...form, categoryId: val });
+          }}
+        >
+          {categories.map((cat) => (
+            <SelectItem
+              key={cat.id.toString()}
+              textValue={cat.name}
+              startContent={
+                <div style={{ color: cat.color }}>
+                  {cat.icon && ICON_MAP[cat.icon] ? ICON_MAP[cat.icon] : <MoreHorizontal size={16} />}
+                </div>
+              }
+            >
+              {cat.name}
+            </SelectItem>
+          ))}
+        </Select>
+      )}
 
       <div className="flex flex-col gap-2">
         <span className="text-xs font-semibold text-default-500 uppercase tracking-wide">
@@ -365,6 +379,24 @@ export function MonthDetailsClient({
         </div>
       </div>
 
+      {/* Toggle Gasto / Ingreso */}
+      <div className="flex items-center justify-between p-3 rounded-xl border border-default-200 bg-default-50">
+        <div className="flex items-center gap-2">
+          {form.type === "income"
+            ? <TrendingUp size={16} className="text-success" />
+            : <TrendingDown size={16} className="text-danger" />}
+          <span className="text-sm font-medium">
+            {form.type === "income" ? "Ingreso" : "Gasto"}
+          </span>
+        </div>
+        <Switch
+          isSelected={form.type === "income"}
+          onValueChange={(val) => setForm({ ...form, type: val ? "income" : "expense", categoryId: val ? null : "", })}
+          color="success"
+          size="sm"
+        />
+      </div>
+
       {formError && (
         <p className="text-danger text-sm flex items-center gap-1">
           <AlertCircle size={14} /> {formError}
@@ -378,7 +410,7 @@ export function MonthDetailsClient({
         isLoading={isPending}
         onPress={() => handleCreate(onClose)}
       >
-        Guardar Gasto
+        {form.type === "income" ? "Registrar Ingreso" : "Guardar Gasto"}
       </Button>
     </div>
   );
@@ -410,7 +442,7 @@ export function MonthDetailsClient({
         variant="flat"
         radius="full"
       >
-        Nuevo Gasto
+        Nuevo Movimiento
       </Button>
 
       {/* Layout principal */}
@@ -559,7 +591,9 @@ export function MonthDetailsClient({
                           </div>
                           <div className="flex items-center gap-2 ml-2 shrink-0">
                             <div className="text-right">
-                              <p className="font-bold text-sm">-${fmt(expense.amount)}</p>
+                              <p className={`font-bold text-sm ${expense.type === "income" ? "text-success" : ""}`}>
+                                {expense.type === "income" ? "+" : "-"}${fmt(expense.amount)}
+                              </p>
                               <Chip
                                 size="sm"
                                 variant="flat"
@@ -573,7 +607,7 @@ export function MonthDetailsClient({
                               isIconOnly
                               variant="light"
                               size="sm"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
                               isLoading={isPending}
                               onPress={() => handleDelete(expense.id)}
                             >
@@ -604,84 +638,87 @@ export function MonthDetailsClient({
               </div>
 
               {/* ── Vista Desktop: tabla ── */}
-              <Table
-                aria-label="Lista de gastos"
-                removeWrapper
-                layout="fixed"
-                className="hidden lg:block"
-                bottomContent={
-                  <div className="flex w-full justify-center">
-                    <Pagination
-                      isCompact
-                      showControls
-                      showShadow
-                      color="default"
-                      page={currentPage}
-                      total={totalPages}
-                      onChange={setCurrentPage}
-                    />
-                  </div>
-                }
-                classNames={{
-                  table: "min-h-[360px]",
-                  td: "align-top",
-                }}
-              >
-                <TableHeader>
-                  <TableColumn width={80}>GASTO</TableColumn>
-                  <TableColumn width={90}>FECHA</TableColumn>
-                  <TableColumn width={80}>MÉTODO</TableColumn>
-                  <TableColumn width={80} align="end">MONTO</TableColumn>
-                  <TableColumn width={40} hideHeader> </TableColumn>
-                </TableHeader>
-                <TableBody
-                  items={paginatedExpenses}
-                  emptyContent={
-                    <div className="flex flex-col items-center py-8 text-default-400 gap-2">
-                      <TrendingDown size={40} strokeWidth={1.2} />
-                      <p className="font-medium">Sin gastos registrados</p>
-                      <p className="text-sm">Agregá tu primer gasto del mes.</p>
-                    </div>
-                  }
+              <div className="flex flex-col" style={{ minHeight: 320 }}>
+                <Table
+                  aria-label="Lista de gastos"
+                  removeWrapper
+                  layout="fixed"
+                  className="hidden lg:block"
+                  classNames={{
+                    td: "align-center",
+                  }}
                 >
-                  {(expense) => (
-                    <TableRow key={expense.id} className="group">
-                      <TableCell>
-                        <div className="flex gap-3 items-center min-w-0">
-                          <CategoryIcon icon={expense.category_icon} color={expense.category_color} />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-sm truncate">{expense.description}</p>
-                            <p className="text-xs text-default-500">{expense.category_name}</p>
+                  <TableHeader>
+                    <TableColumn width={80}>GASTO</TableColumn>
+                    <TableColumn width={90}>FECHA</TableColumn>
+                    <TableColumn width={80}>MÉTODO</TableColumn>
+                    <TableColumn width={80} align="end">MONTO</TableColumn>
+                    <TableColumn width={40} hideHeader> </TableColumn>
+                  </TableHeader>
+                  <TableBody
+                    items={paginatedExpenses}
+                    emptyContent={
+                      <div className="flex flex-col items-center py-8 text-default-400 gap-2">
+                        <TrendingDown size={40} strokeWidth={1.2} />
+                        <p className="font-medium">Sin gastos registrados</p>
+                        <p className="text-sm">Agregá tu primer gasto del mes.</p>
+                      </div>
+                    }
+                  >
+                    {(expense) => (
+                      <TableRow key={expense.id} className="group">
+                        <TableCell>
+                          <div className="flex gap-3 items-center min-w-0">
+                            <CategoryIcon icon={expense.category_icon} color={expense.category_color} />
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm truncate">{expense.description}</p>
+                              <p className="text-xs text-default-500">{expense.category_name}</p>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs text-default-500 whitespace-nowrap">
-                          {mounted ? formatDate(expense.date) : ""}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Chip size="sm" variant="flat" color="default" className="text-[10px]">
-                          {expense.payment_method === "efectivo" ? "Efectivo" : "MercadoPago"}
-                        </Chip>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <p className="font-bold text-sm">-${fmt(expense.amount)}</p>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          isIconOnly
-                          variant="light"
-                          size="sm"
-                          onPress={() => handleDelete(expense.id)}
-                        >
-                          <Trash2 size={14} className="text-danger" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-default-500 whitespace-nowrap">
+                            {mounted ? formatDate(expense.date) : ""}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Chip size="sm" variant="flat" color="default" className="text-[10px]">
+                            {expense.payment_method === "efectivo" ? "Efectivo" : "MercadoPago"}
+                          </Chip>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <p className={`font-bold text-sm ${expense.type === "income" ? "text-success" : ""}`}>
+                            {expense.type === "income" ? "+" : "-"}${fmt(expense.amount)}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            isIconOnly
+                            variant="light"
+                            size="sm"
+                            onPress={() => handleDelete(expense.id)}
+                          >
+                            <Trash2 size={14} className="text-danger" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Paginación siempre abajo */}
+              <div className="flex w-full justify-center mt-4">
+                <Pagination
+                  isCompact
+                  showControls
+                  showShadow
+                  color="default"
+                  page={currentPage}
+                  total={totalPages}
+                  onChange={setCurrentPage}
+                />
+              </div>
 
             </CardBody>
           </Card>
@@ -695,7 +732,9 @@ export function MonthDetailsClient({
                 <div className="bg-primary text-white p-1.5 rounded-full">
                   <Plus size={14} />
                 </div>
-                <h3 className="text-xl font-semibold">Nuevo Gasto</h3>
+                <h3 className="text-xl font-semibold">
+                  {form.type === "income" ? "Nuevo Ingreso" : "Nuevo Gasto"}
+                </h3>
               </div>
               {renderExpenseForm()}
             </CardBody>
@@ -704,11 +743,13 @@ export function MonthDetailsClient({
       </div>
 
       {/* Modal Mobile */}
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="bottom" backdrop="blur">
+      <Modal classNames={{ backdrop: "z-[250]", wrapper: "z-[300]" }} isOpen={isOpen} onOpenChange={onOpenChange} placement="center" backdrop="blur" size={"sm"}>
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader>Registrar Gasto</ModalHeader>
+              <ModalHeader className="text-xl">
+                {form.type === "income" ? "Registrar Ingreso" : "Registrar Gasto"}
+              </ModalHeader>
               <ModalBody className="pb-6">
                 {renderExpenseForm(onClose)}
               </ModalBody>
